@@ -3,6 +3,79 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell,
 } from 'recharts';
+import { API_BASE } from '../utils/api';
+
+// ── Helpers (defined before use to avoid reference errors) ───────────────────
+
+function buildHourlyData(sessions) {
+  const hourMap = {};
+  sessions.forEach((s) =>
+    (s.history || []).forEach((h) => {
+      const hour = new Date(h.timestamp).getHours();
+      const key = `${hour}:00`;
+      if (!hourMap[key]) hourMap[key] = { scores: [], hour: key };
+      hourMap[key].scores.push(h.score);
+    })
+  );
+  return Object.values(hourMap).map((h) => ({
+    hour: h.hour,
+    avgScore: Math.round(h.scores.reduce((a, b) => a + b, 0) / h.scores.length),
+  }));
+}
+
+function getDemoSummary() {
+  const now = new Date();
+  const history = Array.from({ length: 12 }, (_, i) => {
+    const score = Math.floor(Math.random() * 70) + 5;
+    return {
+      timestamp: new Date(now - i * 5 * 60000).toISOString(),
+      score,
+      level: score <= 20 ? 'Low' : score <= 50 ? 'Medium' : 'High',
+    };
+  });
+  const scores = history.map((h) => h.score);
+  return {
+    sessions: [{ history }],
+    avgScore: Math.round(scores.reduce((a, b) => a + b, 0) / scores.length),
+    maxScore: Math.max(...scores),
+    totalEntries: scores.length,
+  };
+}
+
+function LevelBreakdown({ sessions }) {
+  const counts = { Low: 0, Medium: 0, High: 0 };
+  sessions.forEach((s) =>
+    (s.history || []).forEach((h) => {
+      if (h.level in counts) counts[h.level]++;
+    })
+  );
+  const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
+
+  const bars = [
+    { label: 'Low', count: counts.Low, color: 'bg-green-400' },
+    { label: 'Medium', count: counts.Medium, color: 'bg-yellow-400' },
+    { label: 'High', count: counts.High, color: 'bg-red-400' },
+  ];
+
+  return (
+    <div className="space-y-3">
+      {bars.map((b) => (
+        <div key={b.label} className="flex items-center gap-3">
+          <span className="text-xs text-white/50 w-14">{b.label}</span>
+          <div className="flex-1 bg-white/10 rounded-full h-2">
+            <div
+              className={`${b.color} h-2 rounded-full transition-all duration-700`}
+              style={{ width: `${(b.count / total) * 100}%` }}
+            />
+          </div>
+          <span className="text-xs text-white/40 w-8 text-right">{b.count}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 /**
  * DailySummary — Shows aggregated stats and charts for today's sessions.
@@ -11,16 +84,21 @@ import {
 export default function DailySummary() {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/session/daily`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((data) => {
         setSummary(data);
         setLoading(false);
       })
-      .catch(() => {
-        // Use demo data when backend is offline
+      .catch((err) => {
+        console.warn('Backend unavailable, using demo data:', err.message);
+        setError(err.message);
         setSummary(getDemoSummary());
         setLoading(false);
       });
@@ -34,13 +112,20 @@ export default function DailySummary() {
     );
   }
 
+  if (!summary) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white/40">
+        No data available.
+      </div>
+    );
+  }
+
   const statCards = [
-    { label: 'Avg Load Score', value: summary.avgScore, icon: '📊' },
-    { label: 'Peak Score', value: summary.maxScore, icon: '📈' },
-    { label: 'Data Points', value: summary.totalEntries, icon: '🔢' },
+    { label: 'Avg Load Score', value: summary.avgScore ?? 0, icon: '📊' },
+    { label: 'Peak Score', value: summary.maxScore ?? 0, icon: '📈' },
+    { label: 'Data Points', value: summary.totalEntries ?? 0, icon: '🔢' },
   ];
 
-  // Build hourly distribution from session history
   const hourlyData = buildHourlyData(summary.sessions || []);
 
   return (
@@ -49,8 +134,15 @@ export default function DailySummary() {
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-white">Daily Summary</h1>
           <p className="text-white/40 text-sm mt-1">
-            {new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            {new Date().toLocaleDateString(undefined, {
+              weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+            })}
           </p>
+          {error && (
+            <p className="text-yellow-500/60 text-xs mt-1">
+              ⚠ Showing demo data (backend: {error})
+            </p>
+          )}
         </div>
 
         {/* Stat cards */}
@@ -89,7 +181,9 @@ export default function DailySummary() {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-white/30 text-sm text-center py-8">No session data yet for today.</p>
+            <p className="text-white/30 text-sm text-center py-8">
+              No session data yet for today. Use the dashboard to start tracking.
+            </p>
           )}
         </div>
 
@@ -101,72 +195,4 @@ export default function DailySummary() {
       </div>
     </div>
   );
-}
-
-function LevelBreakdown({ sessions }) {
-  const counts = { Low: 0, Medium: 0, High: 0 };
-  sessions.forEach((s) =>
-    (s.history || []).forEach((h) => {
-      if (h.level in counts) counts[h.level]++;
-    })
-  );
-  const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
-
-  const bars = [
-    { label: 'Low', count: counts.Low, color: 'bg-green-400' },
-    { label: 'Medium', count: counts.Medium, color: 'bg-yellow-400' },
-    { label: 'High', count: counts.High, color: 'bg-red-400' },
-  ];
-
-  return (
-    <div className="space-y-3">
-      {bars.map((b) => (
-        <div key={b.label} className="flex items-center gap-3">
-          <span className="text-xs text-white/50 w-14">{b.label}</span>
-          <div className="flex-1 bg-white/10 rounded-full h-2">
-            <div
-              className={`${b.color} h-2 rounded-full transition-all duration-700`}
-              style={{ width: `${(b.count / total) * 100}%` }}
-            />
-          </div>
-          <span className="text-xs text-white/40 w-8 text-right">{b.count}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function buildHourlyData(sessions) {
-  const hourMap = {};
-  sessions.forEach((s) =>
-    (s.history || []).forEach((h) => {
-      const hour = new Date(h.timestamp).getHours();
-      const key = `${hour}:00`;
-      if (!hourMap[key]) hourMap[key] = { scores: [], hour: key };
-      hourMap[key].scores.push(h.score);
-    })
-  );
-  return Object.values(hourMap).map((h) => ({
-    hour: h.hour,
-    avgScore: Math.round(h.scores.reduce((a, b) => a + b, 0) / h.scores.length),
-  }));
-}
-
-function getDemoSummary() {
-  const now = new Date();
-  const history = Array.from({ length: 12 }, (_, i) => {
-    const score = Math.floor(Math.random() * 70) + 5;
-    return {
-      timestamp: new Date(now - i * 5 * 60000).toISOString(),
-      score,
-      level: score <= 20 ? 'Low' : score <= 50 ? 'Medium' : 'High',
-    };
-  });
-  const scores = history.map((h) => h.score);
-  return {
-    sessions: [{ history }],
-    avgScore: Math.round(scores.reduce((a, b) => a + b, 0) / scores.length),
-    maxScore: Math.max(...scores),
-    totalEntries: scores.length,
-  };
 }
