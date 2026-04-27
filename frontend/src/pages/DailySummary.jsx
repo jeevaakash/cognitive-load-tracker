@@ -3,7 +3,6 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell,
 } from 'recharts';
-import { API_BASE } from '../utils/api';
 
 /**
  * DailySummary — Shows aggregated stats and charts for today's sessions.
