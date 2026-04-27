@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getSessionId } from '../utils/sessionId';
+import { API_BASE } from '../utils/api';
 
 const IDLE_THRESHOLD_MS = 5000;   // 5 seconds of no activity = idle
 const REPORT_INTERVAL_MS = 5000;  // Send metrics to backend every 5 seconds
@@ -142,7 +143,7 @@ export function useActivityTracker() {
 
     // Send to backend
     try {
-      const res = await fetch('/api/activity', {
+      const res = await fetch(`${API_BASE}/api/activity`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

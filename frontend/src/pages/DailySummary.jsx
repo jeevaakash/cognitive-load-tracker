@@ -3,6 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell,
 } from 'recharts';
+import { API_BASE } from '../utils/api';
 
 /**
  * DailySummary — Shows aggregated stats and charts for today's sessions.
@@ -13,7 +14,7 @@ export default function DailySummary() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/session/daily')
+    fetch(`${API_BASE}/api/session/daily`)
       .then((r) => r.json())
       .then((data) => {
         setSummary(data);
